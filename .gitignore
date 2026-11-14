@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+.DS_Store
