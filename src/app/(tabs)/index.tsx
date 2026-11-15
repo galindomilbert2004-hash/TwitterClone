@@ -1,7 +1,11 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Share,
+  Animated,
+  Image,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -21,10 +25,55 @@ import {
   deletePost,
   getPosts,
   updatePost,
+  togglePostLike,
+  getPostComments,
+  createPostComment,
+  PostComment,
   Post,
 } from '@/database/posts';
 
 import { getCurrentUser, CurrentUser } from '@/database/session';
+
+
+function AnimatedLikeButton({
+  isLiked,
+  count,
+  onPress,
+}: {
+  isLiked: boolean;
+  count: number;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.spring(scale, { toValue: 1.38, useNativeDriver: true, speed: 35, bounciness: 8 }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 10 }),
+    ]).start();
+    onPress();
+  };
+
+  return (
+    <Pressable
+      style={styles.likeButton}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={isLiked ? 'Unlike post' : 'Like post'}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <FontAwesome
+          name={isLiked ? 'heart' : 'heart-o'}
+          size={19}
+          color={isLiked ? '#FF7417' : '#929292'}
+        />
+      </Animated.View>
+      <Text style={[styles.likeCount, isLiked ? styles.likedCount : null]}>
+        {count}
+      </Text>
+    </Pressable>
+  );
+}
 
 export default function HomeScreen() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -35,6 +84,30 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [commentsPost, setCommentsPost] = useState<Post | null>(null);
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentSaving, setCommentSaving] = useState(false);
+  const bellRotation = useRef(new Animated.Value(0)).current;
+  const publishScale = useRef(new Animated.Value(1)).current;
+
+  const animatePress = (value: Animated.Value, toValue: number) => {
+    Animated.spring(value, { toValue, useNativeDriver: true, speed: 30, bounciness: 5 }).start();
+  };
+
+  const animateBell = () => {
+    bellRotation.setValue(0);
+    Animated.sequence([
+      Animated.timing(bellRotation, { toValue: 1, duration: 90, useNativeDriver: true }),
+      Animated.timing(bellRotation, { toValue: -1, duration: 90, useNativeDriver: true }),
+      Animated.timing(bellRotation, { toValue: 0.7, duration: 90, useNativeDriver: true }),
+      Animated.timing(bellRotation, { toValue: 0, duration: 90, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const bellRotate = bellRotation.interpolate({ inputRange: [-1, 1], outputRange: ['-18deg', '18deg'] });
 
   const loadFeed = useCallback(async () => {
     try {
@@ -47,7 +120,7 @@ export default function HomeScreen() {
 
       setCurrentUser(user);
 
-      const savedPosts = await getPosts();
+      const savedPosts = await getPosts(user.id);
       setPosts(savedPosts);
     } catch (error) {
       console.error('Feed loading error:', error);
@@ -150,8 +223,56 @@ export default function HomeScreen() {
     );
   };
 
+  const handleLike = async (post: Post) => {
+    if (!currentUser) return;
+    try {
+      await togglePostLike(post.id, currentUser.id);
+      await loadFeed();
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Unable to update like.');
+    }
+  };
+
   const handleNotifications = () => {
     Alert.alert('Notifications', 'You have no notifications yet.');
+  };
+
+  const openComments = async (post: Post) => {
+    setCommentsPost(post);
+    setCommentDraft('');
+    setCommentsLoading(true);
+    try {
+      setComments(await getPostComments(post.id));
+    } catch (error) {
+      Alert.alert('Error', 'Unable to load comments.');
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const submitComment = async () => {
+    if (!currentUser || !commentsPost || !commentDraft.trim()) return;
+    try {
+      setCommentSaving(true);
+      await createPostComment(commentsPost.id, currentUser.id, commentDraft);
+      setCommentDraft('');
+      setComments(await getPostComments(commentsPost.id));
+      await loadFeed();
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Unable to add comment.');
+    } finally {
+      setCommentSaving(false);
+    }
+  };
+
+  const sharePost = async (post: Post) => {
+    try {
+      await Share.share({
+        message: `@${(post.username || 'user').replace(/^@/, '')} on X_App:\n\n${post.content}`,
+      });
+    } catch (error) {
+      Alert.alert('Share failed', 'Unable to share this post right now.');
+    }
   };
 
   const renderPost = ({ item }: { item: Post }) => {
@@ -160,17 +281,20 @@ export default function HomeScreen() {
     return (
       <View style={styles.postCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {item.name?.charAt(0).toUpperCase() || 'U'}
-          </Text>
+          {item.avatar_uri ? (
+            <Image source={{ uri: item.avatar_uri }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>
+              {(item.username || 'user').replace(/^@/, '').charAt(0).toUpperCase()}
+            </Text>
+          )}
         </View>
 
         <View style={styles.postBody}>
           <View style={styles.postHeader}>
             <View style={styles.authorInfo}>
-              <Text style={styles.authorName}>{item.name}</Text>
               <Text style={styles.username}>
-                @{item.username || 'user'}
+                @{(item.username || 'user').replace(/^@/, '')}
               </Text>
             </View>
 
@@ -182,6 +306,22 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.postContent}>{item.content}</Text>
+
+          <View style={styles.postInteractionRow}>
+            <AnimatedLikeButton
+              isLiked={!!item.is_liked}
+              count={item.likes_count || 0}
+              onPress={() => handleLike(item)}
+            />
+            <Pressable style={styles.postActionButton} onPress={() => openComments(item)} accessibilityRole="button" accessibilityLabel="View comments">
+              <FontAwesome name="comment-o" size={19} color="#929292" />
+              <Text style={styles.postActionCount}>{item.comments_count || 0}</Text>
+            </Pressable>
+            <Pressable style={styles.postActionButton} onPress={() => sharePost(item)} accessibilityRole="button" accessibilityLabel="Share post">
+              <FontAwesome name="share" size={18} color="#929292" />
+              <Text style={styles.postActionLabel}>Share</Text>
+            </Pressable>
+          </View>
 
           {isOwner && (
             <View style={styles.actions}>
@@ -208,7 +348,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1D9BF0" />
+        <ActivityIndicator size="large" color="#FF7417" />
         <Text style={styles.loadingText}>Loading X_App...</Text>
       </View>
     );
@@ -222,31 +362,38 @@ export default function HomeScreen() {
       >
         {/* HEADER */}
         <View style={styles.header}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.logo}>X_App</Text>
-            <FontAwesome name="twitter" size={25} color="#1D9BF0" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <FontAwesome name="twitter" size={25} color="#FF7417" />
+            <Text style={styles.logo}>
+              <Text style={styles.logoAccent}>X_</Text>
+              <Text style={styles.logoText}>App</Text>
+            </Text>
           </View>
 
           <Pressable
-            onPress={handleNotifications}
+            onPress={() => { animateBell(); handleNotifications(); }}
             style={styles.notificationButton}
             accessibilityLabel="Notifications"
           >
-            <FontAwesome name="bell" size={21} color="#1D9BF0" />
+            <Animated.View style={{ transform: [{ rotate: bellRotate }] }}>
+              <FontAwesome name="bell" size={21} color="#FF7417" />
+            </Animated.View>
           </Pressable>
         </View>
 
         {/* SEARCH BAR */}
         <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
+          <View style={[styles.searchBox, searchFocused && styles.searchBoxFocused]}>
             <Text style={styles.searchIcon}>⌕</Text>
             <TextInput
               style={styles.searchInput}
               placeholder="Search posts..."
-              placeholderTextColor="#8899A6"
+              placeholderTextColor="#777777"
               value={search}
               onChangeText={setSearch}
               returnKeyType="search"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
             />
 
             {search.length > 0 && (
@@ -270,7 +417,7 @@ export default function HomeScreen() {
                 setRefreshing(true);
                 loadFeed();
               }}
-              tintColor="#1D9BF0"
+              tintColor="#FF7417"
             />
           }
           ListHeaderComponent={
@@ -284,7 +431,7 @@ export default function HomeScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Share your thoughts..."
-                placeholderTextColor="#8899A6"
+                placeholderTextColor="#777777"
                 multiline
                 maxLength={280}
                 value={content}
@@ -307,22 +454,26 @@ export default function HomeScreen() {
                     </Pressable>
                   )}
 
+                  <Animated.View style={{ transform: [{ scale: publishScale }] }}>
                   <Pressable
                     style={[
                       styles.publishButton,
                       saving && styles.disabledButton,
                     ]}
                     onPress={handlePublish}
+                    onPressIn={() => animatePress(publishScale, 0.96)}
+                    onPressOut={() => animatePress(publishScale, 1)}
                     disabled={saving}
                   >
                     {saving ? (
-                      <ActivityIndicator color="#FFFFFF" />
+                      <ActivityIndicator color="#090909" />
                     ) : (
                       <Text style={styles.publishText}>
                         {editingPostId !== null ? 'Save' : 'Post'}
                       </Text>
                     )}
                   </Pressable>
+                  </Animated.View>
                 </View>
               </View>
             </View>
@@ -342,6 +493,58 @@ export default function HomeScreen() {
           contentContainerStyle={styles.feedContent}
         />
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={!!commentsPost}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCommentsPost(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.commentsSheet}>
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>Comments</Text>
+              <Pressable onPress={() => setCommentsPost(null)} hitSlop={12}>
+                <FontAwesome name="close" size={22} color="#F5F5F5" />
+              </Pressable>
+            </View>
+            {commentsLoading ? (
+              <ActivityIndicator color="#FF7417" style={{ marginTop: 28 }} />
+            ) : (
+              <FlatList
+                data={comments}
+                keyExtractor={(comment) => comment.id.toString()}
+                style={styles.commentsList}
+                ListEmptyComponent={<Text style={styles.noComments}>No comments yet. Be the first!</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.commentItem}>
+                    <Text style={styles.commentUsername}>@{(item.username || 'user').replace(/^@/, '')}</Text>
+                    <Text style={styles.commentContent}>{item.content}</Text>
+                  </View>
+                )}
+              />
+            )}
+            <View style={styles.commentComposer}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Write a comment..."
+                placeholderTextColor="#777777"
+                value={commentDraft}
+                onChangeText={setCommentDraft}
+                maxLength={280}
+                multiline
+              />
+              <Pressable
+                style={[styles.commentSendButton, (!commentDraft.trim() || commentSaving) && styles.commentSendDisabled]}
+                onPress={submitComment}
+                disabled={!commentDraft.trim() || commentSaving}
+              >
+                {commentSaving ? <ActivityIndicator color="#090909" /> : <Text style={styles.commentSendText}>Send</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -349,34 +552,34 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
   },
   container: {
     flex: 1,
-    backgroundColor: '#F5F8FA',
+    backgroundColor: '#090909',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
   },
   loadingText: {
     marginTop: 12,
-    color: '#536471',
+    color: '#929292',
   },
   header: {
     height: 58,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
     borderBottomWidth: 1,
-    borderBottomColor: '#E1E8ED',
+    borderBottomColor: '#332014',
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   logo: {
-    color: '#1D9BF0',
+    color: '#FF7417',
     fontSize: 23,
     fontWeight: 'bold',
   },
@@ -384,16 +587,16 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#F0F3F5',
+    backgroundColor: '#171717',
     alignItems: 'center',
     justifyContent: 'center',
   },
   notificationIcon: {
-    color: '#1D9BF0',
+    color: '#FF7417',
     fontSize: 25,
   },
   searchRow: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
     paddingHorizontal: 16,
     paddingVertical: 12,
     alignItems: 'flex-end',
@@ -401,25 +604,35 @@ const styles = StyleSheet.create({
   searchBox: {
     width: '78%',
     height: 42,
-    backgroundColor: '#F0F3F5',
+    backgroundColor: '#171717',
+    borderWidth: 1,
+    borderColor: 'transparent',
     borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 13,
   },
+  searchBoxFocused: {
+    borderColor: '#FF7417',
+    shadowColor: '#FF7417',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 3,
+  },
   searchIcon: {
-    color: '#657786',
+    color: '#929292',
     fontSize: 25,
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    color: '#14171A',
+    color: '#F5F5F5',
     fontSize: 14,
     paddingVertical: 0,
   },
   clearSearch: {
-    color: '#657786',
+    color: '#929292',
     fontSize: 16,
     paddingLeft: 8,
   },
@@ -427,13 +640,13 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   composer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
     padding: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#E1E8ED',
+    borderBottomColor: '#332014',
   },
   composerTitle: {
-    color: '#14171A',
+    color: '#F5F5F5',
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 12,
@@ -442,11 +655,11 @@ const styles = StyleSheet.create({
     minHeight: 100,
     maxHeight: 160,
     borderWidth: 1,
-    borderColor: '#E1E8ED',
+    borderColor: '#332014',
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    color: '#14171A',
+    color: '#F5F5F5',
     textAlignVertical: 'top',
   },
   composerFooter: {
@@ -456,7 +669,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   characterCount: {
-    color: '#8899A6',
+    color: '#777777',
     fontSize: 13,
   },
   composerActions: {
@@ -465,7 +678,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   publishButton: {
-    backgroundColor: '#1D9BF0',
+    backgroundColor: '#FF7417',
     paddingVertical: 10,
     paddingHorizontal: 24,
     borderRadius: 22,
@@ -476,7 +689,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   publishText: {
-    color: '#FFFFFF',
+    color: '#090909',
     fontWeight: 'bold',
     fontSize: 15,
   },
@@ -484,27 +697,32 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   cancelText: {
-    color: '#536471',
+    color: '#929292',
     fontWeight: '600',
   },
   postCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#090909',
     padding: 16,
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#E1E8ED',
+    borderBottomColor: '#332014',
     gap: 12,
   },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#1D9BF0',
+    backgroundColor: '#FF7417',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
   avatarText: {
-    color: '#FFFFFF',
+    color: '#090909',
     fontSize: 20,
     fontWeight: 'bold',
   },
@@ -523,25 +741,110 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   authorName: {
-    color: '#14171A',
+    color: '#F5F5F5',
     fontSize: 15,
     fontWeight: 'bold',
   },
   username: {
-    color: '#657786',
-    fontSize: 13,
-    marginLeft: 6,
+    color: '#F5F5F5',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   postDate: {
-    color: '#8899A6',
+    color: '#777777',
     fontSize: 11,
   },
   postContent: {
-    color: '#14171A',
+    color: '#F5F5F5',
     fontSize: 15,
     lineHeight: 23,
     marginTop: 10,
   },
+  postInteractionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingRight: 14,
+    gap: 8,
+  },
+  likeCount: {
+    color: '#929292',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  likedCount: {
+    color: '#FF7417',
+  },
+  postActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 7,
+  },
+  postActionCount: {
+    color: '#929292',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  postActionLabel: {
+    color: '#929292',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  commentsSheet: {
+    height: '72%',
+    backgroundColor: '#141414',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderTopWidth: 1,
+    borderColor: '#6B310F',
+    padding: 18,
+  },
+  commentsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#332014',
+  },
+  commentsTitle: {
+    color: '#F5F5F5',
+    fontSize: 19,
+    fontWeight: 'bold',
+  },
+  commentsList: { flex: 1, marginTop: 8 },
+  noComments: { color: '#929292', textAlign: 'center', marginTop: 35 },
+  commentItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#29201B' },
+  commentUsername: { color: '#FF9A52', fontWeight: 'bold', marginBottom: 5 },
+  commentContent: { color: '#F5F5F5', fontSize: 14, lineHeight: 20 },
+  commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingTop: 12 },
+  commentInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 100,
+    color: '#F5F5F5',
+    backgroundColor: '#090909',
+    borderWidth: 1,
+    borderColor: '#49301F',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  commentSendButton: { backgroundColor: '#FF7417', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13 },
+  commentSendDisabled: { opacity: 0.5 },
+  commentSendText: { color: '#090909', fontWeight: 'bold' },
   actions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -553,7 +856,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   editText: {
-    color: '#1D9BF0',
+    color: '#FF7417',
     fontWeight: '600',
   },
   deleteButton: {
@@ -561,7 +864,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   deleteText: {
-    color: '#E0245E',
+    color: '#FF6B6B',
     fontWeight: '600',
   },
   emptyContainer: {
@@ -569,12 +872,12 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyTitle: {
-    color: '#14171A',
+    color: '#F5F5F5',
     fontSize: 18,
     fontWeight: 'bold',
   },
   emptyText: {
-    color: '#657786',
+    color: '#929292',
     marginTop: 8,
   },
 });

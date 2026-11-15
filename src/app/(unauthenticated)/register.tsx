@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,27 +8,45 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 
 import { registerUser } from '@/database/auth';
 
+const COLORS = {
+  background: '#090909',
+  surface: '#171717',
+  orange: '#FF7417',
+  orangeSoft: '#FF9A52',
+  white: '#F5F5F5',
+  muted: '#929292',
+  border: '#71350F',
+};
+
 export default function RegisterScreen() {
   const router = useRouter();
-
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
+  const animateButton = (toValue: number) => {
+    Animated.spring(buttonScale, {
+      toValue,
+      useNativeDriver: true,
+      speed: 35,
+      bounciness: 4,
+    }).start();
+  };
 
   const handleRegister = async () => {
-    if (
-      !name.trim() ||
-      !email.trim() ||
-      !password ||
-      !confirmPassword
-    ) {
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
       Alert.alert('Missing Information', 'Please complete all fields.');
       return;
     }
@@ -39,10 +57,7 @@ export default function RegisterScreen() {
     }
 
     if (password.length < 6) {
-      Alert.alert(
-        'Weak Password',
-        'Password must contain at least 6 characters.'
-      );
+      Alert.alert('Weak Password', 'Password must contain at least 6 characters.');
       return;
     }
 
@@ -53,9 +68,7 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
-
       const userId = await registerUser(name, email, password);
-
       setName('');
       setEmail('');
       setPassword('');
@@ -64,21 +77,15 @@ export default function RegisterScreen() {
       Alert.alert(
         'Registration Successful!',
         `Your account has been saved to SQLite.\n\nUser ID: ${userId}`,
-        [
-          {
-            text: 'Go to Login',
-            onPress: () => {
-              router.replace('/(unauthenticated)/login');
-            },
-          },
-        ]
+        [{
+          text: 'Go to Login',
+          onPress: () => router.replace('/(unauthenticated)/login'),
+        }]
       );
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong during registration.';
-
+      const message = error instanceof Error
+        ? error.message
+        : 'Something went wrong during registration.';
       Alert.alert('Registration Failed', message);
     } finally {
       setLoading(false);
@@ -92,94 +99,127 @@ export default function RegisterScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.logoContainer}>
-        <Text style={styles.twitterIcon}></Text>
-        <Text style={styles.logo}>X_App</Text>
+        <Text style={styles.logo}><Text style={styles.logoAccent}>X_</Text><Text style={styles.logoRest}>App</Text></Text>
       </View>
 
-      <Text style={styles.title}>JOIN X_APP</Text>
+      <Text style={styles.title}>CREATE ACCOUNT</Text>
+      <Text style={styles.subtitle}>Join X_App and connect with your friends.</Text>
 
-      <Text style={styles.subtitle}>
-        Create your account and connect with your friends.
-      </Text>
+      <View style={styles.formCard}>
+        <Text style={styles.fieldLabel}>FULL NAME</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your full name"
+          placeholderTextColor={COLORS.muted}
+          value={name}
+          onChangeText={setName}
+          editable={!loading}
+          selectionColor={COLORS.orange}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Full Name"
-        placeholderTextColor="#888"
-        value={name}
-        onChangeText={setName}
-        editable={!loading}
-      />
+        <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your email"
+          placeholderTextColor={COLORS.muted}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={email}
+          onChangeText={setEmail}
+          editable={!loading}
+          selectionColor={COLORS.orange}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email Address"
-        placeholderTextColor="#888"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={email}
-        onChangeText={setEmail}
-        editable={!loading}
-      />
+        <Text style={styles.fieldLabel}>PASSWORD</Text>
+        <View style={styles.passwordField}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Create a password"
+            placeholderTextColor={COLORS.muted}
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            editable={!loading}
+            selectionColor={COLORS.orange}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity
+            style={styles.eyeButton}
+            onPress={() => setShowPassword((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            disabled={loading}
+          >
+            <Ionicons
+              name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+              size={22}
+              color={COLORS.orangeSoft}
+            />
+          </TouchableOpacity>
+        </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#888"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        editable={!loading}
-      />
+        <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
+        <View style={styles.passwordField}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Re-enter your password"
+            placeholderTextColor={COLORS.muted}
+            secureTextEntry={!showConfirmPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            editable={!loading}
+            selectionColor={COLORS.orange}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity
+            style={styles.eyeButton}
+            onPress={() => setShowConfirmPassword((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+            disabled={loading}
+          >
+            <Ionicons
+              name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+              size={22}
+              color={COLORS.orangeSoft}
+            />
+          </TouchableOpacity>
+        </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        placeholderTextColor="#888"
-        secureTextEntry
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        editable={!loading}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, loading && styles.disabledButton]}
-        onPress={handleRegister}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#101827" />
-        ) : (
-          <Text style={styles.buttonText}>Create Account</Text>
-        )}
-      </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+          <TouchableOpacity
+            style={[styles.button, loading && styles.disabledButton]}
+            onPress={handleRegister}
+            onPressIn={() => animateButton(0.97)}
+            onPressOut={() => animateButton(1)}
+            disabled={loading}
+            activeOpacity={0.9}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.background} />
+            ) : (
+              <Text style={styles.buttonText}>CREATE ACCOUNT</Text>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Already have an account?{' '}
-        </Text>
-
-        <Link
-          href="/(unauthenticated)/login"
-          style={styles.link}
-        >
-          Login
-        </Link>
+        <Text style={styles.footerText}>Already have an account? </Text>
+        <Link href="/(unauthenticated)/login" style={styles.link}>Login</Link>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: '#101827',
-  },
+  scroll: { flex: 1, backgroundColor: COLORS.background },
   container: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 25,
+    paddingHorizontal: 24,
+    paddingVertical: 35,
   },
   logoContainer: {
     flexDirection: 'row',
@@ -188,60 +228,91 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 30,
   },
-  twitterIcon: {
-    fontSize: 32,
-  },
-  logo: {
-    color: '#38BDF8',
-    fontSize: 30,
-    fontWeight: 'bold',
-  },
+  logo: { fontSize: 29, fontWeight: '800', letterSpacing: 0.5 },
+  logoAccent: { color: COLORS.orange },
+  logoRest: { color: COLORS.white },
   title: {
-    color: '#FFFFFF',
-    fontSize: 27,
-    fontWeight: 'bold',
+    color: COLORS.white,
+    fontSize: 25,
+    fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 2,
+    letterSpacing: 1.2,
   },
   subtitle: {
-    color: '#A0AEC0',
+    color: COLORS.muted,
     textAlign: 'center',
     marginTop: 8,
-    marginBottom: 30,
+    marginBottom: 24,
+    fontSize: 14,
+  },
+  formCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: COLORS.orange,
+    shadowOpacity: 0.13,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  fieldLabel: {
+    color: COLORS.orangeSoft,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 9,
+    marginTop: 4,
   },
   input: {
-    backgroundColor: '#1E293B',
-    color: '#FFFFFF',
-    padding: 16,
+    backgroundColor: '#101010',
+    color: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#333333',
+    paddingHorizontal: 15,
+    paddingVertical: 15,
     borderRadius: 12,
-    marginBottom: 15,
-    fontSize: 16,
+    marginBottom: 16,
+    fontSize: 15,
   },
+  passwordField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    color: COLORS.white,
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    fontSize: 15,
+  },
+  eyeButton: { paddingHorizontal: 15, paddingVertical: 12 },
   button: {
-    backgroundColor: '#38BDF8',
+    backgroundColor: COLORS.orange,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 8,
+    shadowColor: COLORS.orange,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-  disabledButton: {
-    opacity: 0.6,
-  },
+  disabledButton: { opacity: 0.6 },
   buttonText: {
-    color: '#101827',
-    fontWeight: 'bold',
-    fontSize: 17,
+    color: COLORS.background,
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 1,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 25,
-  },
-  footerText: {
-    color: '#FFFFFF',
-  },
-  link: {
-    color: '#38BDF8',
-    fontWeight: 'bold',
-  },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
+  footerText: { color: COLORS.muted },
+  link: { color: COLORS.orangeSoft, fontWeight: '800' },
 });

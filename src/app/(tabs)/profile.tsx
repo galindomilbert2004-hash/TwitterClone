@@ -1,17 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   Image,
+  Modal,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
+import LogoutDoorAnimation from '@/components/logout-door-animation';
 
 import {
   clearCurrentUser,
@@ -32,6 +35,12 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showLogoutAnimation, setShowLogoutAnimation] = useState(false);
+  const actionScale = useRef(new Animated.Value(1)).current;
+
+  const animateAction = (toValue: number) => {
+    Animated.spring(actionScale, { toValue, useNativeDriver: true, speed: 32, bounciness: 4 }).start();
+  };
 
   useEffect(() => {
     loadProfile();
@@ -132,9 +141,16 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              setShowLogoutAnimation(true);
               await clearCurrentUser();
+
+              await new Promise(resolve =>
+                setTimeout(resolve, 2000)
+              );
+
               router.replace('/(unauthenticated)/login');
             } catch (error) {
+              setShowLogoutAnimation(false);
               Alert.alert('Error', 'Unable to log out.');
             }
           },
@@ -146,7 +162,7 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#38BDF8" />
+        <ActivityIndicator size="large" color="#FF7417" />
         <Text style={styles.muted}>Loading profile...</Text>
       </View>
     );
@@ -161,6 +177,7 @@ export default function ProfileScreen() {
   }
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -202,12 +219,17 @@ export default function ProfileScreen() {
 
             <Text style={styles.email}>{profile.email}</Text>
 
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => setEditing(true)}
-            >
-              <Text style={styles.buttonText}>Edit Profile</Text>
-            </TouchableOpacity>
+            <Animated.View style={{ transform: [{ scale: actionScale }] }}>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => setEditing(true)}
+                onPressIn={() => animateAction(0.96)}
+                onPressOut={() => animateAction(1)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.buttonText}>Edit Profile</Text>
+              </TouchableOpacity>
+            </Animated.View>
           </>
         ) : (
           <View style={styles.form}>
@@ -241,17 +263,22 @@ export default function ProfileScreen() {
               maxLength={160}
             />
 
+            <Animated.View style={{ transform: [{ scale: actionScale }] }}>
             <TouchableOpacity
               style={styles.button}
               onPress={handleSave}
+              onPressIn={() => animateAction(0.96)}
+              onPressOut={() => animateAction(1)}
+              activeOpacity={0.9}
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color="#101827" />
+                <ActivityIndicator color="#090909" />
               ) : (
                 <Text style={styles.buttonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
+            </Animated.View>
 
             <TouchableOpacity
               style={styles.cancelButton}
@@ -279,13 +306,22 @@ export default function ProfileScreen() {
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
     </ScrollView>
+      <Modal
+        visible={showLogoutAnimation}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => {}}
+      >
+        <LogoutDoorAnimation />
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#101827',
+    backgroundColor: '#090909',
   },
   content: {
     padding: 20,
@@ -293,18 +329,18 @@ const styles = StyleSheet.create({
   },
   center: {
     flex: 1,
-    backgroundColor: '#101827',
+    backgroundColor: '#090909',
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
-    color: '#FFFFFF',
+    color: '#F5F5F5',
     fontSize: 27,
     fontWeight: 'bold',
     marginBottom: 25,
   },
   profileCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#171717',
     borderRadius: 18,
     padding: 22,
     alignItems: 'center',
@@ -317,49 +353,49 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#334155',
+    backgroundColor: '#101010',
   },
   avatarPlaceholder: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#38BDF8',
+    backgroundColor: '#FF7417',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarLetter: {
-    color: '#101827',
+    color: '#090909',
     fontSize: 48,
     fontWeight: 'bold',
   },
   changePhoto: {
-    color: '#38BDF8',
+    color: '#FF7417',
     marginTop: 10,
     fontWeight: 'bold',
   },
   name: {
-    color: '#FFFFFF',
+    color: '#F5F5F5',
     fontSize: 23,
     fontWeight: 'bold',
     marginTop: 5,
   },
   username: {
-    color: '#38BDF8',
+    color: '#FF7417',
     fontSize: 15,
     marginTop: 5,
   },
   bio: {
-    color: '#FFFFFF',
+    color: '#F5F5F5',
     fontSize: 15,
     textAlign: 'center',
     marginTop: 18,
   },
   email: {
-    color: '#94A3B8',
+    color: '#929292',
     marginTop: 15,
   },
   muted: {
-    color: '#94A3B8',
+    color: '#929292',
     marginTop: 10,
   },
   form: {
@@ -367,14 +403,14 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   label: {
-    color: '#FFFFFF',
+    color: '#F5F5F5',
     fontWeight: 'bold',
     marginBottom: 8,
     marginTop: 12,
   },
   input: {
-    backgroundColor: '#334155',
-    color: '#FFFFFF',
+    backgroundColor: '#101010',
+    color: '#F5F5F5',
     borderRadius: 10,
     padding: 14,
     fontSize: 15,
@@ -384,7 +420,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   button: {
-    backgroundColor: '#38BDF8',
+    backgroundColor: '#FF7417',
     padding: 15,
     borderRadius: 12,
     alignItems: 'center',
@@ -392,7 +428,7 @@ const styles = StyleSheet.create({
     marginTop: 25,
   },
   buttonText: {
-    color: '#101827',
+    color: '#090909',
     fontWeight: 'bold',
     fontSize: 16,
   },
@@ -401,28 +437,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
-    color: '#FFFFFF',
+    color: '#F5F5F5',
     fontWeight: 'bold',
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#1E293B',
+    backgroundColor: '#171717',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#101010',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 18,
     marginTop: 28,
   },
   logoutIcon: {
-    color: '#F87171',
+    color: '#FF6B6B',
     fontSize: 20,
     marginRight: 10,
   },
   logoutText: {
-    color: '#F87171',
+    color: '#FF6B6B',
     fontSize: 15,
     fontWeight: 'bold',
   },

@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 
+import LoginLoadingScreen from '@/components/login-loading-screen';
 import { initializeDatabase } from '@/database/database';
 import { getCurrentUser } from '@/database/session';
+
+const LOADING_DURATION_MS = 2000;
 
 export default function Index() {
   const [destination, setDestination] = useState<
     '/(tabs)' | '/(unauthenticated)/login' | null
   >(null);
+
+  const [restoringSession, setRestoringSession] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -16,17 +20,32 @@ export default function Index() {
     async function checkSession() {
       try {
         await initializeDatabase();
+
         const user = await getCurrentUser();
 
-        if (active) {
-          setDestination(
-            user ? '/(tabs)' : '/(unauthenticated)/login'
+        if (!active) return;
+
+        if (user) {
+          setRestoringSession(true);
+
+          await new Promise(resolve =>
+            setTimeout(resolve, LOADING_DURATION_MS)
           );
+
+          if (!active) return;
+
+          setDestination('/(tabs)');
+
+          // FIX: Stop the loading screen after 2 seconds.
+          setRestoringSession(false);
+        } else {
+          setDestination('/(unauthenticated)/login');
         }
       } catch (error) {
-        console.error('Session check failed:', error);
+        console.error('Session Check Failed:', error);
 
         if (active) {
+          setRestoringSession(false);
           setDestination('/(unauthenticated)/login');
         }
       }
@@ -39,22 +58,9 @@ export default function Index() {
     };
   }, []);
 
-  if (!destination) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#38BDF8" />
-      </View>
-    );
+  if (restoringSession || !destination) {
+    return <LoginLoadingScreen />;
   }
 
   return <Redirect href={destination} />;
 }
-
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#101827',
-  },
-});
