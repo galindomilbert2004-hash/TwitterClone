@@ -583,6 +583,16 @@ const styles = StyleSheet.create({
     fontSize: 23,
     fontWeight: 'bold',
   },
+  logoAccent: {
+    color: '#FF7417',
+    fontSize: 23,
+    fontWeight: 'bold',
+  },
+  logoText: {
+    color: '#F5F5F5',
+    fontSize: 23,
+    fontWeight: 'bold',
+  },
   notificationButton: {
     width: 42,
     height: 42,

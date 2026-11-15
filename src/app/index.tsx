@@ -9,7 +9,7 @@ const LOADING_DURATION_MS = 2000;
 
 export default function Index() {
   const [destination, setDestination] = useState<
-    '/(tabs)' | '/(unauthenticated)/login' | null
+    '/(authenticated)/(tabs)/home' | '/(unauthenticated)/login' | null
   >(null);
 
   const [restoringSession, setRestoringSession] = useState(false);
@@ -34,7 +34,7 @@ export default function Index() {
 
           if (!active) return;
 
-          setDestination('/(tabs)');
+          setDestination('/(authenticated)/(tabs)/home');
 
           // FIX: Stop the loading screen after 2 seconds.
           setRestoringSession(false);

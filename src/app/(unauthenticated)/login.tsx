@@ -61,7 +61,7 @@ export default function LoginScreen() {
       await saveCurrentUser(user.id);
       setShowLoginLoading(true);
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      router.replace('/(tabs)');
+      router.replace('/(authenticated)/(tabs)/home');
     } catch (error) {
       console.error('Login error:', error);
       Alert.alert('Login Error', 'Something went wrong. Please try again.');

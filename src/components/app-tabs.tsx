@@ -12,7 +12,7 @@ export default function AppTabs() {
       indicatorColor="#332014"
       labelStyle={{ selected: { color: '#FF7417' } }}
     >
-      <NativeTabs.Trigger name="index">
+      <NativeTabs.Trigger name="home">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'house', selected: 'house.fill' }}
