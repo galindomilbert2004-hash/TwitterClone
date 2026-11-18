@@ -17,3 +17,11 @@ Expo-Go-58.0.5.apk
 
 expo-env.d.ts
 # @end expo-cli
+# Local backups and temporary files
+backups/
+src_backup_*/
+src_before_wordmark_*/
+src_old/
+*.bak
+X_App_source.zip
+fix_image_feature.py

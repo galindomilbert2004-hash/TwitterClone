@@ -1,3 +1,4 @@
+
 import { getDatabase } from './database';
 
 export type Post = {
@@ -24,18 +25,25 @@ export type PostComment = {
   created_at: string;
 };
 
-export async function createPost(userId: number, content: string) {
+export async function createPost(
+  userId: number,
+  content: string,
+  imageUri: string | null = null
+) {
   const db = await getDatabase();
   const cleanContent = content.trim();
+  const cleanImageUri = imageUri?.trim() || null;
 
-  if (!cleanContent) {
-    throw new Error('Post cannot be empty.');
+  if (!cleanContent && !cleanImageUri) {
+    throw new Error('Please write something or add an image.');
   }
 
   const result = await db.runAsync(
-    `INSERT INTO posts (user_id, content) VALUES (?, ?)`,
+    `INSERT INTO posts (user_id, content, image_uri)
+     VALUES (?, ?, ?)`,
     userId,
-    cleanContent
+    cleanContent,
+    cleanImageUri
   );
 
   return result.lastInsertRowId;
@@ -69,20 +77,23 @@ export async function getPosts(currentUserId: number): Promise<Post[]> {
 export async function updatePost(
   postId: number,
   userId: number,
-  content: string
+  content: string,
+  imageUri: string | null = null
 ) {
   const db = await getDatabase();
   const cleanContent = content.trim();
+  const cleanImageUri = imageUri?.trim() || null;
 
-  if (!cleanContent) {
-    throw new Error('Post cannot be empty.');
+  if (!cleanContent && !cleanImageUri) {
+    throw new Error('Please write something or add an image.');
   }
 
   const result = await db.runAsync(
     `UPDATE posts
-     SET content = ?
+     SET content = ?, image_uri = ?
      WHERE id = ? AND user_id = ?`,
     cleanContent,
+    cleanImageUri,
     postId,
     userId
   );
@@ -107,26 +118,41 @@ export async function deletePost(postId: number, userId: number) {
   }
 }
 
-
-export async function togglePostLike(postId: number, userId: number): Promise<boolean> {
+export async function togglePostLike(
+  postId: number,
+  userId: number
+): Promise<boolean> {
   const db = await getDatabase();
+
   const existing = await db.getFirstAsync<{ id: number }>(
     'SELECT id FROM post_likes WHERE post_id = ? AND user_id = ?',
-    postId, userId
+    postId,
+    userId
   );
 
   if (existing) {
-    await db.runAsync('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', postId, userId);
+    await db.runAsync(
+      'DELETE FROM post_likes WHERE post_id = ? AND user_id = ?',
+      postId,
+      userId
+    );
     return false;
   }
 
-  await db.runAsync('INSERT OR IGNORE INTO post_likes (post_id, user_id) VALUES (?, ?)', postId, userId);
+  await db.runAsync(
+    'INSERT OR IGNORE INTO post_likes (post_id, user_id) VALUES (?, ?)',
+    postId,
+    userId
+  );
+
   return true;
 }
 
-
-export async function getPostComments(postId: number): Promise<PostComment[]> {
+export async function getPostComments(
+  postId: number
+): Promise<PostComment[]> {
   const db = await getDatabase();
+
   return db.getAllAsync<PostComment>(
     `SELECT post_comments.id, post_comments.post_id, post_comments.user_id,
             users.username, users.avatar_uri, post_comments.content, post_comments.created_at
@@ -138,12 +164,24 @@ export async function getPostComments(postId: number): Promise<PostComment[]> {
   );
 }
 
-export async function createPostComment(postId: number, userId: number, content: string) {
+export async function createPostComment(
+  postId: number,
+  userId: number,
+  content: string
+) {
   const cleanContent = content.trim();
-  if (!cleanContent) throw new Error('Comment cannot be empty.');
+
+  if (!cleanContent) {
+    throw new Error('Comment cannot be empty.');
+  }
+
   const db = await getDatabase();
+
   await db.runAsync(
     'INSERT INTO post_comments (post_id, user_id, content) VALUES (?, ?, ?)',
-    postId, userId, cleanContent
+    postId,
+    userId,
+    cleanContent
   );
 }
+

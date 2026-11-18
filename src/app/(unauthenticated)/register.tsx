@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import {
   View,
@@ -14,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 
 import { registerUser } from '@/database/auth';
+import { syncUserToMockAPI } from '@/services/userSync';
 
 const COLORS = {
   background: '#090909',
@@ -27,6 +29,7 @@ const COLORS = {
 
 export default function RegisterScreen() {
   const router = useRouter();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +37,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
   const buttonScale = useRef(new Animated.Value(1)).current;
 
   const animateButton = (toValue: number) => {
@@ -57,7 +61,10 @@ export default function RegisterScreen() {
     }
 
     if (password.length < 6) {
-      Alert.alert('Weak Password', 'Password must contain at least 6 characters.');
+      Alert.alert(
+        'Weak Password',
+        'Password must contain at least 6 characters.'
+      );
       return;
     }
 
@@ -68,7 +75,24 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
+
+      // Save account to local SQLite first.
       const userId = await registerUser(name, email, password);
+
+      // Attempt to synchronize public profile with MockAPI.
+      let cloudSyncMessage = '';
+
+      try {
+        await syncUserToMockAPI(userId);
+        cloudSyncMessage =
+          '\nYour public profile was synced to MockAPI.';
+      } catch (syncError) {
+        console.error('MockAPI registration sync error:', syncError);
+
+        cloudSyncMessage =
+          '\nCloud sync unavailable. Your account is saved locally.';
+      }
+
       setName('');
       setEmail('');
       setPassword('');
@@ -76,16 +100,21 @@ export default function RegisterScreen() {
 
       Alert.alert(
         'Registration Successful!',
-        `Your account has been saved to SQLite.\n\nUser ID: ${userId}`,
-        [{
-          text: 'Go to Login',
-          onPress: () => router.replace('/(unauthenticated)/login'),
-        }]
+        `Your account has been saved to SQLite.${cloudSyncMessage}\n\nUser ID: ${userId}`,
+        [
+          {
+            text: 'Go to Login',
+            onPress: () =>
+              router.replace('/(unauthenticated)/login'),
+          },
+        ]
       );
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : 'Something went wrong during registration.';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Something went wrong during registration.';
+
       Alert.alert('Registration Failed', message);
     } finally {
       setLoading(false);
@@ -99,14 +128,21 @@ export default function RegisterScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.logoContainer}>
-        <Text style={styles.logo}><Text style={styles.logoAccent}>X_</Text><Text style={styles.logoRest}>App</Text></Text>
+        <Text style={styles.logo}>
+          <Text style={styles.logoAccent}>X_</Text>
+          <Text style={styles.logoRest}>App</Text>
+        </Text>
       </View>
 
       <Text style={styles.title}>CREATE ACCOUNT</Text>
-      <Text style={styles.subtitle}>Join X_App and connect with your friends.</Text>
+
+      <Text style={styles.subtitle}>
+        Join X_App and connect with your friends.
+      </Text>
 
       <View style={styles.formCard}>
         <Text style={styles.fieldLabel}>FULL NAME</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Enter your full name"
@@ -118,6 +154,7 @@ export default function RegisterScreen() {
         />
 
         <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Enter your email"
@@ -132,6 +169,7 @@ export default function RegisterScreen() {
         />
 
         <Text style={styles.fieldLabel}>PASSWORD</Text>
+
         <View style={styles.passwordField}>
           <TextInput
             style={styles.passwordInput}
@@ -144,15 +182,22 @@ export default function RegisterScreen() {
             selectionColor={COLORS.orange}
             autoCapitalize="none"
           />
+
           <TouchableOpacity
             style={styles.eyeButton}
             onPress={() => setShowPassword((visible) => !visible)}
             accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            accessibilityLabel={
+              showPassword ? 'Hide password' : 'Show password'
+            }
             disabled={loading}
           >
             <Ionicons
-              name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+              name={
+                showPassword
+                  ? 'eye-off-outline'
+                  : 'eye-outline'
+              }
               size={22}
               color={COLORS.orangeSoft}
             />
@@ -160,6 +205,7 @@ export default function RegisterScreen() {
         </View>
 
         <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
+
         <View style={styles.passwordField}>
           <TextInput
             style={styles.passwordInput}
@@ -172,24 +218,40 @@ export default function RegisterScreen() {
             selectionColor={COLORS.orange}
             autoCapitalize="none"
           />
+
           <TouchableOpacity
             style={styles.eyeButton}
-            onPress={() => setShowConfirmPassword((visible) => !visible)}
+            onPress={() =>
+              setShowConfirmPassword((visible) => !visible)
+            }
             accessibilityRole="button"
-            accessibilityLabel={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+            accessibilityLabel={
+              showConfirmPassword
+                ? 'Hide confirm password'
+                : 'Show confirm password'
+            }
             disabled={loading}
           >
             <Ionicons
-              name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+              name={
+                showConfirmPassword
+                  ? 'eye-off-outline'
+                  : 'eye-outline'
+              }
               size={22}
               color={COLORS.orangeSoft}
             />
           </TouchableOpacity>
         </View>
 
-        <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+        <Animated.View
+          style={{ transform: [{ scale: buttonScale }] }}
+        >
           <TouchableOpacity
-            style={[styles.button, loading && styles.disabledButton]}
+            style={[
+              styles.button,
+              loading && styles.disabledButton,
+            ]}
             onPress={handleRegister}
             onPressIn={() => animateButton(0.97)}
             onPressOut={() => animateButton(1)}
@@ -199,28 +261,43 @@ export default function RegisterScreen() {
             {loading ? (
               <ActivityIndicator color={COLORS.background} />
             ) : (
-              <Text style={styles.buttonText}>CREATE ACCOUNT</Text>
+              <Text style={styles.buttonText}>
+                CREATE ACCOUNT
+              </Text>
             )}
           </TouchableOpacity>
         </Animated.View>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Already have an account? </Text>
-        <Link href="/(unauthenticated)/login" style={styles.link}>Login</Link>
+        <Text style={styles.footerText}>
+          Already have an account?{' '}
+        </Text>
+
+        <Link
+          href="/(unauthenticated)/login"
+          style={styles.link}
+        >
+          Login
+        </Link>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: COLORS.background },
+  scroll: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 35,
   },
+
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -228,9 +305,21 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 30,
   },
-  logo: { fontSize: 29, fontWeight: '800', letterSpacing: 0.5 },
-  logoAccent: { color: COLORS.orange },
-  logoRest: { color: COLORS.white },
+
+  logo: {
+    fontSize: 29,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  logoAccent: {
+    color: COLORS.orange,
+  },
+
+  logoRest: {
+    color: COLORS.white,
+  },
+
   title: {
     color: COLORS.white,
     fontSize: 25,
@@ -238,81 +327,104 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 1.2,
   },
+
   subtitle: {
     color: COLORS.muted,
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-    fontSize: 14,
+    marginTop: 9,
+    marginBottom: 28,
   },
+
   formCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 20,
+    borderRadius: 18,
     padding: 20,
-    shadowColor: COLORS.orange,
-    shadowOpacity: 0.13,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
   },
+
   fieldLabel: {
     color: COLORS.orangeSoft,
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     marginBottom: 9,
-    marginTop: 4,
+    marginTop: 17,
   },
+
   input: {
-    backgroundColor: '#101010',
-    color: COLORS.white,
+    height: 52,
     borderWidth: 1,
     borderColor: '#333333',
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    borderRadius: 12,
-    marginBottom: 16,
-    fontSize: 15,
+    borderRadius: 11,
+    backgroundColor: '#101010',
+    color: COLORS.white,
+    paddingHorizontal: 14,
+    fontSize: 14,
   },
+
   passwordField: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: '#333333',
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 11,
+    backgroundColor: '#101010',
   },
+
   passwordInput: {
     flex: 1,
+    height: '100%',
     color: COLORS.white,
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    fontSize: 15,
+    paddingHorizontal: 14,
+    fontSize: 14,
   },
-  eyeButton: { paddingHorizontal: 15, paddingVertical: 12 },
+
+  eyeButton: {
+    width: 48,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   button: {
+    height: 53,
     backgroundColor: COLORS.orange,
-    padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: COLORS.orange,
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    justifyContent: 'center',
+    marginTop: 28,
   },
-  disabledButton: { opacity: 0.6 },
+
+  disabledButton: {
+    opacity: 0.65,
+  },
+
   buttonText: {
     color: COLORS.background,
-    fontWeight: '900',
     fontSize: 14,
+    fontWeight: '900',
     letterSpacing: 1,
   },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  footerText: { color: COLORS.muted },
-  link: { color: COLORS.orangeSoft, fontWeight: '800' },
+
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 27,
+  },
+
+  footerText: {
+    color: COLORS.muted,
+    fontSize: 13,
+  },
+
+  link: {
+    color: COLORS.orange,
+    fontSize: 13,
+    fontWeight: '800',
+  },
 });
+

@@ -33,6 +33,11 @@ import {
 } from '@/database/posts';
 
 import { getCurrentUser, CurrentUser } from '@/database/session';
+import {
+  syncPostToMockAPI,
+  getMockApiPostId,
+  deleteMockApiPost,
+} from '@/services/postSync';
 
 
 function AnimatedLikeButton({
@@ -79,6 +84,8 @@ export default function HomeScreen() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [showImageUrlInput, setShowImageUrlInput] = useState(false);
   const [search, setSearch] = useState('');
   const [editingPostId, setEditingPostId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -164,16 +171,40 @@ export default function HomeScreen() {
     try {
       setSaving(true);
 
+      let syncFailed = false;
+
       if (editingPostId !== null) {
         await updatePost(editingPostId, currentUser.id, content);
-        Alert.alert('Success', 'Your post has been updated.');
+
+        try {
+          await syncPostToMockAPI(editingPostId, currentUser.id);
+        } catch (syncError) {
+          syncFailed = true;
+          console.warn('MockAPI post update pending:', syncError);
+        }
       } else {
-        await createPost(currentUser.id, content);
+        const newPostId = await createPost(currentUser.id, content);
+
+        try {
+          await syncPostToMockAPI(newPostId, currentUser.id);
+        } catch (syncError) {
+          syncFailed = true;
+          console.warn('MockAPI post creation pending:', syncError);
+        }
       }
 
       setContent('');
       setEditingPostId(null);
       await loadFeed();
+
+      if (syncFailed) {
+        Alert.alert(
+          'Saved locally',
+          'Your post is saved on this device, but MockAPI synchronization failed. Check your internet connection.'
+        );
+      } else if (editingPostId !== null) {
+        Alert.alert('Success', 'Your post has been updated.');
+      }
     } catch (error) {
       Alert.alert(
         'Error',
@@ -207,8 +238,28 @@ export default function HomeScreen() {
             if (!currentUser) return;
 
             try {
+              // Get the cloud ID before deleting the local post.
+              const remotePostId = await getMockApiPostId(
+                post.id,
+                currentUser.id
+              );
+
+              // Delete locally first so the app remains usable offline.
               await deletePost(post.id, currentUser.id);
               await loadFeed();
+
+              if (remotePostId) {
+                try {
+                  await deleteMockApiPost(remotePostId);
+                } catch (syncError) {
+                  console.warn('MockAPI post deletion pending:', syncError);
+
+                  Alert.alert(
+                    'Deleted locally',
+                    'The post was deleted from this device, but its MockAPI copy could not be deleted.'
+                  );
+                }
+              }
             } catch (error) {
               Alert.alert(
                 'Error',
@@ -402,6 +453,14 @@ export default function HomeScreen() {
               </Pressable>
             )}
           </View>
+
+          <Pressable
+            style={styles.addImageButton}
+            onPress={() => setShowImageUrlInput(value => !value)}
+            accessibilityLabel="Add picture"
+          >
+            <FontAwesome name="image" size={22} color="#FF7417" />
+          </Pressable>
         </View>
 
         {/* HOME FEED */}
@@ -438,6 +497,20 @@ export default function HomeScreen() {
                 onChangeText={setContent}
                 editable={!saving}
               />
+
+              {showImageUrlInput && (
+                <TextInput
+                  style={styles.imageUrlInput}
+                  placeholder="Paste your image URL here..."
+                  placeholderTextColor="#777777"
+                  value={imageUrl}
+                  onChangeText={setImageUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  editable={!saving}
+                />
+              )}
 
               <View style={styles.composerFooter}>
                 <Text style={styles.characterCount}>
@@ -609,10 +682,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#090909',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   searchBox: {
-    width: '78%',
+    flex: 1,
     height: 42,
     backgroundColor: '#171717',
     borderWidth: 1,
@@ -621,6 +696,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 13,
+  },
+  addImageButton: {
+    width: 44,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#171717',
+    borderWidth: 1,
+    borderColor: '#FF7417',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageUrlInput: {
+    minHeight: 44,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FF7417',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    color: '#F5F5F5',
+    backgroundColor: '#171717',
+    fontSize: 14,
   },
   searchBoxFocused: {
     borderColor: '#FF7417',

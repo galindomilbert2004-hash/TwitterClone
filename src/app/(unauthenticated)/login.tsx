@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import {
   View,
@@ -14,6 +15,7 @@ import { Link, router } from 'expo-router';
 
 import { loginUser } from '@/database/auth';
 import { saveCurrentUser } from '@/database/session';
+import { syncUserToMockAPI } from '@/services/userSync';
 import LoginLoadingScreen from '@/components/login-loading-screen';
 
 const COLORS = {
@@ -32,6 +34,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showLoginLoading, setShowLoginLoading] = useState(false);
+
   const buttonScale = useRef(new Animated.Value(1)).current;
 
   const animateButton = (toValue: number) => {
@@ -45,44 +48,73 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Missing Information', 'Please enter your email and password.');
+      Alert.alert(
+        'Missing Information',
+        'Please enter your email and password.'
+      );
       return;
     }
 
     try {
       setLoading(true);
+
       const user = await loginUser(email, password);
 
       if (!user) {
-        Alert.alert('Login Failed', 'Incorrect email or password. Please try again.');
+        Alert.alert(
+          'Login Failed',
+          'Incorrect email or password. Please try again.'
+        );
         return;
       }
 
       await saveCurrentUser(user.id);
+
+      // Sync the account with MockAPI without blocking login.
+      syncUserToMockAPI(user.id).catch((error) => {
+        console.warn('MockAPI user sync pending:', error);
+      });
+
       setShowLoginLoading(true);
+
+      // Keep the login presentation at 2 seconds.
       await new Promise((resolve) => setTimeout(resolve, 2000));
+
       router.replace('/(authenticated)/(tabs)/home');
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Error', 'Something went wrong. Please try again.');
+
+      Alert.alert(
+        'Login Error',
+        'Something went wrong. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  if (showLoginLoading) return <LoginLoadingScreen />;
+  if (showLoginLoading) {
+    return <LoginLoadingScreen />;
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <Text style={styles.logo}><Text style={styles.logoAccent}>X_</Text><Text style={styles.logoRest}>App</Text></Text>
+        <Text style={styles.logo}>
+          <Text style={styles.logoAccent}>X_</Text>
+          <Text style={styles.logoRest}>App</Text>
+        </Text>
       </View>
 
       <Text style={styles.title}>WELCOME BACK</Text>
-      <Text style={styles.subtitle}>Sign in to continue to your account</Text>
+
+      <Text style={styles.subtitle}>
+        Sign in to continue to your account
+      </Text>
 
       <View style={styles.formCard}>
         <Text style={styles.fieldLabel}>EMAIL ADDRESS</Text>
+
         <TextInput
           style={styles.input}
           placeholder="Enter your email"
@@ -97,6 +129,7 @@ export default function LoginScreen() {
         />
 
         <Text style={styles.fieldLabel}>PASSWORD</Text>
+
         <View style={styles.passwordField}>
           <TextInput
             style={styles.passwordInput}
@@ -109,24 +142,40 @@ export default function LoginScreen() {
             selectionColor={COLORS.orange}
             autoCapitalize="none"
           />
+
           <TouchableOpacity
             style={styles.eyeButton}
-            onPress={() => setShowPassword((visible) => !visible)}
+            onPress={() =>
+              setShowPassword((visible) => !visible)
+            }
             accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            accessibilityLabel={
+              showPassword ? 'Hide password' : 'Show password'
+            }
             disabled={loading}
           >
             <Ionicons
-              name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+              name={
+                showPassword
+                  ? 'eye-off-outline'
+                  : 'eye-outline'
+              }
               size={22}
               color={COLORS.orangeSoft}
             />
           </TouchableOpacity>
         </View>
 
-        <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+        <Animated.View
+          style={{
+            transform: [{ scale: buttonScale }],
+          }}
+        >
           <TouchableOpacity
-            style={[styles.button, loading && styles.disabledButton]}
+            style={[
+              styles.button,
+              loading && styles.disabledButton,
+            ]}
             onPress={handleLogin}
             onPressIn={() => animateButton(0.97)}
             onPressOut={() => animateButton(1)}
@@ -143,8 +192,16 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Don't have an account? </Text>
-        <Link href="/(unauthenticated)/register" style={styles.link}>Create one</Link>
+        <Text style={styles.footerText}>
+          Don't have an account?{' '}
+        </Text>
+
+        <Link
+          href="/(unauthenticated)/register"
+          style={styles.link}
+        >
+          Create one
+        </Link>
       </View>
     </View>
   );
@@ -169,8 +226,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  logoAccent: { color: COLORS.orange },
-  logoRest: { color: COLORS.white },
+  logoAccent: {
+    color: COLORS.orange,
+  },
+  logoRest: {
+    color: COLORS.white,
+  },
   title: {
     color: COLORS.white,
     fontSize: 26,
@@ -194,7 +255,10 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.orange,
     shadowOpacity: 0.13,
     shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
     elevation: 4,
   },
   fieldLabel: {
@@ -245,10 +309,15 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.orange,
     shadowOpacity: 0.3,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     elevation: 5,
   },
-  disabledButton: { opacity: 0.6 },
+  disabledButton: {
+    opacity: 0.6,
+  },
   buttonText: {
     color: COLORS.background,
     fontWeight: '900',
@@ -260,6 +329,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 26,
   },
-  footerText: { color: COLORS.muted },
-  link: { color: COLORS.orangeSoft, fontWeight: '800' },
+  footerText: {
+    color: COLORS.muted,
+  },
+  link: {
+    color: COLORS.orangeSoft,
+    fontWeight: '800',
+  },
 });
+

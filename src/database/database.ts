@@ -2,6 +2,7 @@
 import * as SQLite from 'expo-sqlite';
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let initializationPromise: Promise<void> | null = null;
 
 export function getDatabase() {
   if (!databasePromise) {
@@ -11,7 +12,19 @@ export function getDatabase() {
   return databasePromise;
 }
 
-export async function initializeDatabase() {
+export function initializeDatabase(): Promise<void> {
+  if (!initializationPromise) {
+    initializationPromise = initializeDatabaseOnce().catch((error) => {
+      // Allow another initialization attempt if this one fails.
+      initializationPromise = null;
+      throw error;
+    });
+  }
+
+  return initializationPromise;
+}
+
+async function initializeDatabaseOnce() {
   const db = await getDatabase();
 
   await db.execAsync(`
@@ -69,5 +82,31 @@ export async function initializeDatabase() {
     ON post_comments(post_id);
   `);
 
+  // Read the current users table columns.
+  const userColumns = await db.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(users)'
+  );
+
+  // Read the current posts table columns.
+  const postColumns = await db.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(posts)'
+  );
+
+  // Add api_user_id only if it does not exist.
+  if (!userColumns.some((column) => column.name === 'api_user_id')) {
+    await db.execAsync(
+      'ALTER TABLE users ADD COLUMN api_user_id TEXT'
+    );
+  }
+
+  // Add api_post_id only if it does not exist.
+  if (!postColumns.some((column) => column.name === 'api_post_id')) {
+    await db.execAsync(
+      'ALTER TABLE posts ADD COLUMN api_post_id TEXT'
+    );
+  }
+
   console.log('SQLite database initialized successfully!');
+  console.log('MockAPI ID migration completed successfully!');
 }
+
